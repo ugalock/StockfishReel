@@ -70,8 +70,10 @@ class _CreateVideoScreenState extends State<CreateVideoScreen> {
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => VideoReviewScreen(
-              videoFile: File(file.path),
-              source: VideoSource.camera,
+              videoData: VideoData.fromFile(
+                File(file.path),
+                VideoSource.camera,
+              ),
             ),
           ),
         );
@@ -96,8 +98,10 @@ class _CreateVideoScreenState extends State<CreateVideoScreen> {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => VideoReviewScreen(
-            videoFile: File(video.path),
-            source: VideoSource.gallery,
+            videoData: VideoData.fromFile(
+              File(video.path),
+              VideoSource.gallery,
+            ),
           ),
         ),
       );

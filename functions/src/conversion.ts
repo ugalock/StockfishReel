@@ -13,15 +13,27 @@ interface PgnToGifData {
     pgnContent: string;
     fileName?: string;
     flipped?: boolean;
+    uuid: string;
 }
 
 export const convertPgnToGifHttp = firebase_functions.https.onCall(async (request: firebase_functions.https.CallableRequest<PgnToGifData>) => {
     // Expecting a JSON body with at least 'userId' and 'pgnContent' fields.
-    const { userId, pgnContent, fileName, flipped } = request.data;
+    const { userId, pgnContent, fileName, flipped, uuid } = request.data;
     try {
         if (!pgnContent || typeof pgnContent !== 'string') {
             throw new firebase_functions.https.HttpsError('invalid-argument', 'Missing or invalid "pgnContent" in request body.');
         }
+
+        const statusRef = admin.firestore().collection('gif_statuses').where('uuid', '==', uuid).limit(1);
+        const querySnapshot = await statusRef.get();
+        if (querySnapshot.empty) {
+            throw new firebase_functions.https.HttpsError('not-found', 'Video not found.');
+        }
+
+        await querySnapshot.docs[0].ref.update({
+            status: 'received',
+        });
+
         // Use the provided fileName or generate one based on the current timestamp.
         const outputFileName = fileName && typeof fileName === 'string' ? fileName : `pgn2gif_${Date.now()}`;
 
@@ -42,7 +54,10 @@ export const convertPgnToGifHttp = firebase_functions.https.onCall(async (reques
         await bucket.file(destinationPath).save(gifBuffer, {
             metadata: {
                 contentType: 'image/gif',
-                userId: userId,
+                metadata: {
+                    userId: userId,
+                    uuid: uuid,
+                },
             },
         });
         console.log(`GIF successfully uploaded to ${destinationPath}`);
@@ -57,11 +72,29 @@ export const convertGifToMp4 = functions.object().onFinalize(async (object) => {
     const filePath = object.name;
     const contentType = object.contentType;
     const userId = object.metadata?.userId;
+    const uuid = object.metadata?.uuid;
+
     // Only process GIF files.
     if (!filePath || !contentType || !contentType.startsWith('image/gif')) {
         console.log('File is not a GIF, skipping conversion.');
         return;
     }
+
+    if (!userId || !uuid) {
+        console.log('User ID or UUID is missing, skipping conversion.');
+        return;
+    }
+
+    const statusRef = admin.firestore().collection('gif_statuses').where('uuid', '==', uuid).limit(1);
+    const querySnapshot = await statusRef.get();
+    if (querySnapshot.empty) {
+        console.log('Video not found, skipping conversion.');
+        return;
+    }
+    await querySnapshot.docs[0].ref.update({
+        status: 'converting',
+    });
+    
 
     // Reference to the bucket where the file was uploaded.
     const bucket = storage.bucket(object.bucket);
@@ -86,11 +119,12 @@ export const convertGifToMp4 = functions.object().onFinalize(async (object) => {
                     '-pix_fmt yuv420p',
                 ])
                 .videoFilters("pad=iw:ceil(iw*16/9):0:(oh-ih)/2:color=black,setsar=1,scale='if(gt(iw,720),720,iw)':'if(gt(ih,1280),1280,ih)'")
-                .videoCodec('libaom-av1')
+                .videoCodec('libx265')
                 .outputOptions([
                     '-crf 30',
                     '-b:v 0',
-                    '-cpu-used 4'
+                    '-vtag hvc1',
+                    // '-cpu-used 4'
                 ])
                 .output(outputTempFile.path)
                 .on('end', () => {
@@ -105,7 +139,7 @@ export const convertGifToMp4 = functions.object().onFinalize(async (object) => {
         });
 
         // Define the destination path for the MP4 file.
-        const destination = filePath.replace(/\.gif$/i, '.mp4').replace('gifs/', 'videos/');
+        const destination = filePath.replace(/\.gif$/i, '.mp4').replace('gifs/', `videos/`);
         console.log(`Uploading MP4 to ${destination}`);
 
         // Upload the MP4 file to the bucket.
@@ -113,10 +147,125 @@ export const convertGifToMp4 = functions.object().onFinalize(async (object) => {
             destination,
             metadata: {
                 contentType: 'video/mp4',
-                userId: userId,
+                metadata: {
+                    userId: userId,
+                },
+            },
+        });
+        await querySnapshot.docs[0].ref.update({
+            status: 'completed',
+        });
+        console.log('MP4 uploaded successfully.');
+    } catch (error) {
+        console.error('Error in conversion process:', error);
+        throw error;
+    } finally {
+        // Clean up temporary files.
+        try {
+            await inputTempFile.cleanup();
+            await outputTempFile.cleanup();
+        } catch (cleanupError) {
+            console.error('Error cleaning up temporary files:', cleanupError);
+        }
+    }
+});
+
+export const transcodeVideo = functions.object().onFinalize(async (object) => {
+    const filePath = object.name;
+    const contentType = object.contentType;
+
+    if (!filePath || !filePath.startsWith('tmp/')) {
+        // console.log('File is not in the tmp directory, skipping conversion.');
+        return;
+    }
+
+    // Only process MP4 files.
+    if (!contentType || !contentType.startsWith('video/mp4')) {
+        console.log('File is not a MP4, skipping conversion.');
+        return;
+    }
+
+    const fileName = filePath.split('/').pop(); // 'uuid.mp4'
+    const uuid = fileName?.replace('.mp4', '');
+    if (!uuid) {
+        console.log('File name is not a valid UUID, skipping conversion.');
+        return;
+    }
+
+    const videoRef = admin.firestore().collection('videos').where('id', '==', uuid).limit(1);
+    const querySnapshot = await videoRef.get();
+    if (querySnapshot.empty) {
+        console.log('Video not found, skipping conversion.');
+        return;
+    }
+
+    const videoDoc = querySnapshot.docs[0];
+    const userId = videoDoc.data().uploaderId;
+
+    // Reference to the bucket where the file was uploaded.
+    const bucket = storage.bucket(object.bucket);
+
+    // Create temporary files for input GIF and output MP4.
+    const inputTempFile = await tmp.file({ prefix: 'input-', postfix: '.mp4' });
+    const outputTempFile = await tmp.file({ prefix: 'output-', postfix: '.mp4' });
+
+    try {
+        // Download the GIF file to the temporary location.
+        await bucket.file(filePath).download({ destination: inputTempFile.path });
+        console.log(`Downloaded MP4 to ${inputTempFile.path}`);
+
+        // Run FFmpeg to convert the GIF to MP4.
+        await new Promise<void>((resolve, reject) => {
+            ffmpeg(inputTempFile.path)
+                // Use flags to improve mobile compatibility:
+                // -movflags faststart moves the metadata to the beginning.
+                // -pix_fmt yuv420p ensures wide compatibility.
+                .outputOptions([
+                    '-movflags faststart',
+                    '-pix_fmt yuv420p',
+                ])
+                .videoFilters("pad=iw:ceil(iw*16/9):0:(oh-ih)/2:color=black,setsar=1,scale='if(gt(iw,720),720,iw)':'if(gt(ih,1280),1280,ih)'")
+                .videoCodec('libx265')
+                .outputOptions([
+                    '-crf 30',
+                    '-b:v 0',
+                    '-vtag hvc1',
+                    // '-cpu-used 4'
+                ])
+                .output(outputTempFile.path)
+                .on('end', () => {
+                    console.log('FFmpeg conversion finished');
+                    resolve();
+                })
+                .on('error', (err: Error) => {
+                    console.error('Error during FFmpeg conversion:', err);
+                    reject(err);
+                })
+                .run();
+        });
+
+        // Define the destination path for the MP4 file.
+        const destination = filePath.replace('tmp/', `videos/`);
+        console.log(`Uploading MP4 to ${destination}`);
+
+        // Upload the MP4 file to the bucket.
+        await bucket.upload(outputTempFile.path, {
+            destination,
+            metadata: {
+                contentType: 'video/mp4',
+                metadata: {
+                    userId: userId,
+                },
             },
         });
         console.log('MP4 uploaded successfully.');
+
+        // Update the video document with the new video URL.
+        await videoDoc.ref.update({
+            videoUrl: destination,
+            thumbnailUrl: destination,
+            status: 'completed',
+        });
     } catch (error) {
         console.error('Error in conversion process:', error);
         throw error;

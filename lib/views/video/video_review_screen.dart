@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'dart:io';
 import 'add_pgn_screen.dart';
 import '../../models/video_types.dart';
 
 class VideoReviewScreen extends StatefulWidget {
-  final File videoFile;
-  final VideoSource source;
+  final VideoData videoData;
+  final String? initialPgnContent;
 
   const VideoReviewScreen({
     super.key,
-    required this.videoFile,
-    required this.source,
+    required this.videoData,
+    this.initialPgnContent,
   });
 
   @override
@@ -25,17 +24,36 @@ class _VideoReviewScreenState extends State<VideoReviewScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(widget.videoFile)
-      ..initialize().then((_) {
+    _initializeVideo();
+  }
+
+  Future<void> _initializeVideo() async {
+    _controller = widget.videoData.isRemote
+        ? VideoPlayerController.networkUrl(Uri.parse(widget.videoData.remoteUrl!))
+        : VideoPlayerController.file(widget.videoData.file!);
+    
+    try {
+      await _controller.initialize();
+      await _controller.setLooping(true);
+      if (mounted) {
         setState(() {});
-      })
-      ..setLooping(true);
+      }
+    } catch (e) {
+      debugPrint('Error initializing video: $e');
+    }
   }
 
   @override
   void dispose() {
+    _controller.pause();
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void deactivate() {
+    _controller.pause();
+    super.deactivate();
   }
 
   void _togglePlayPause() {
@@ -103,16 +121,17 @@ class _VideoReviewScreenState extends State<VideoReviewScreen> {
                 child: GestureDetector(
                   onTap: _togglePlayPause,
                   child: Container(
-                    width: 60,
-                    height: 60,
                     decoration: BoxDecoration(
-                      color: Colors.black45,
-                      borderRadius: BorderRadius.circular(30),
+                      shape: BoxShape.circle,
+                      color: Colors.black45, // Fairly opaque background.
                     ),
-                    child: Icon(
-                      _isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                      size: 40,
+                    child: Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: !_isPlaying ? Icon(
+                        Icons.play_arrow,
+                        size: 64.0,
+                        color: Colors.white,
+                      ) : null,
                     ),
                   ),
                 ),
@@ -145,7 +164,8 @@ class _VideoReviewScreenState extends State<VideoReviewScreen> {
                         Navigator.of(context).push(
                           MaterialPageRoute(
                             builder: (context) => AddPGNScreen(
-                              videoFile: widget.videoFile,
+                              videoData: widget.videoData,
+                              initialPgnContent: widget.initialPgnContent,
                             ),
                           ),
                         );
@@ -162,6 +182,7 @@ class _VideoReviewScreenState extends State<VideoReviewScreen> {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
                       ),
                     ),

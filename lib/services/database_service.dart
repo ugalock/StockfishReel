@@ -10,6 +10,7 @@ class DatabaseService {
     try {
       final QuerySnapshot snapshot = await _firestore
           .collection('videos')
+          .where('status', isEqualTo: 'completed')
           .orderBy('createdAt', descending: true)
           .limit(limit)
           .get();
@@ -21,8 +22,8 @@ class DatabaseService {
           ...data,
         });
       }).toList();
-    } catch (e) {
-      _log.severe('Error fetching videos', e);
+    } catch (e, stackTrace) {
+      _log.severe('Error fetching videos', e, stackTrace);
       rethrow;
     }
   }

@@ -44,6 +44,8 @@ class _MainFeedScreenState extends State<MainFeedScreen> {
         _isLoading = false;
       });
     } catch (e) {
+      // print('Error loading videos: $e');
+      // print('Stack trace: $stackTrace');
       setState(() {
         _error = 'Failed to load videos';
         _isLoading = false;

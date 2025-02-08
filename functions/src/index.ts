@@ -23,6 +23,6 @@ import * as admin from 'firebase-admin';
 admin.initializeApp();
 
 import { createUser } from "./auth";
-import { convertPgnToGifHttp, convertGifToMp4 } from "./conversion";
+import { convertPgnToGifHttp, convertGifToMp4, transcodeVideo } from "./conversion";
 
-export { createUser, convertPgnToGifHttp, convertGifToMp4 };
+export { createUser, convertPgnToGifHttp, convertGifToMp4, transcodeVideo };

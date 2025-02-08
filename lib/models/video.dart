@@ -12,8 +12,8 @@ class Video {
   final int viewCount;
   final GameMetadata gameMetadata;
   final VideoSegments videoSegments;
-  final List<AnimationData> animationData;
-  final List<MoveData> moves;
+  final List<AnimationData>? animationData;
+  final List<MoveData>? moves;
 
   const Video({
     required this.id,
@@ -42,29 +42,33 @@ class Video {
       description: json['description'] as String,
       hashtags: List<String>.from(json['hashtags']),
       chessOpenings: List<String>.from(json['chessOpenings']),
-      createdAt: DateTime.parse(json['createdAt'] as String),
+      createdAt: json['createdAt'].toDate(),
       likesCount: json['likesCount'] as int,
       commentsCount: json['commentsCount'] as int,
       viewCount: json['viewCount'] as int,
       gameMetadata: GameMetadata.fromJson(json['gameMetadata'] as Map<String, dynamic>),
       videoSegments: VideoSegments.fromJson(json['videoSegments'] as Map<String, dynamic>),
-      animationData: (json['animationData'] as List)
-          .map((e) => AnimationData.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      moves: (json['moves'] as List)
-          .map((e) => MoveData.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      animationData: json['animationData'] != null
+          ? (json['animationData'] as List)
+              .map((e) => AnimationData.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : null,
+      moves: json['moves'] != null
+          ? (json['moves'] as List)
+              .map((e) => MoveData.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 }
 
 class GameMetadata {
-  final int playerELO;
-  final int opponentELO;
-  final String site;
-  final DateTime datePlayed;
-  final String result;
-  final String pgn;
+  final int? playerELO;
+  final int? opponentELO;
+  final String? site;
+  final DateTime? datePlayed;
+  final String? result;
+  final String? pgn;
 
   const GameMetadata({
     required this.playerELO,
@@ -77,12 +81,12 @@ class GameMetadata {
 
   factory GameMetadata.fromJson(Map<String, dynamic> json) {
     return GameMetadata(
-      playerELO: json['playerELO'] as int,
-      opponentELO: json['opponentELO'] as int,
-      site: json['site'] as String,
-      datePlayed: DateTime.parse(json['datePlayed'] as String),
-      result: json['result'] as String,
-      pgn: json['pgn'] as String,
+      playerELO: json['playerELO'] as int?,
+      opponentELO: json['opponentELO'] as int?,
+      site: json['site'] as String?,
+      datePlayed: json['datePlayed'] != null ? DateTime.parse(json['datePlayed'] as String) : null,
+      result: json['result'] as String?,
+      pgn: json['pgn'] as String?,
     );
   }
 }
@@ -137,9 +141,9 @@ class MoveData {
   final int moveNumber;
   final String moveColor;
   final String notation;
-  final String classification;
+  final String? classification;
   final int timestamp;
-  final String annotation;
+  final String? annotation;
 
   const MoveData({
     required this.moveNumber,
@@ -155,9 +159,9 @@ class MoveData {
       moveNumber: json['moveNumber'] as int,
       moveColor: json['moveColor'] as String,
       notation: json['notation'] as String,
-      classification: json['classification'] as String,
+      classification: json['classification'] as String?,
       timestamp: json['timestamp'] as int,
-      annotation: json['annotation'] as String,
+      annotation: json['annotation'] as String?,
     );
   }
 } 

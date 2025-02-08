@@ -101,7 +101,7 @@ class _VideoInfoWidgetState extends State<VideoInfoWidget> {
             ),
             const SizedBox(width: 8),
             Text(
-              widget.video.gameMetadata.result,
+              widget.video.gameMetadata.result ?? 'Unknown',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 12,
@@ -165,7 +165,7 @@ class _VideoInfoWidgetState extends State<VideoInfoWidget> {
         Row(
           children: [
             Text(
-              'Player: ${widget.video.gameMetadata.playerELO}',
+              'Player: ${widget.video.gameMetadata.playerELO != null && widget.video.gameMetadata.playerELO != 0 ? widget.video.gameMetadata.playerELO : '?'}',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 12,
@@ -174,7 +174,7 @@ class _VideoInfoWidgetState extends State<VideoInfoWidget> {
             ),
             const SizedBox(width: 8),
             Text(
-              'Opponent: ${widget.video.gameMetadata.opponentELO}',
+              'Opponent: ${widget.video.gameMetadata.opponentELO != null && widget.video.gameMetadata.opponentELO != 0 ? widget.video.gameMetadata.opponentELO : '?'}',
               style: const TextStyle(
                 color: Colors.white70,
                 fontSize: 12,
