@@ -142,7 +142,10 @@ class _VideoCardWidgetState extends State<VideoCardWidget> {
         Positioned(
           right: 8,
           bottom: 16,
-          child: VideoActionsWidget(video: widget.video),
+          child: VideoActionsWidget(
+            video: widget.video,
+            controller: _controller,
+          ),
         ),
       ],
     );

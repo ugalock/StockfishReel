@@ -7,6 +7,7 @@ class MoveAnnotationsScreen extends StatefulWidget {
   final VideoData videoData;
   final String? pgnContent;
   final List<String>? moves;
+  final List<int>? timestamps;
   final String? openingName;
   final double? middleGameTimestamp;
   final double? endGameTimestamp;
@@ -16,6 +17,7 @@ class MoveAnnotationsScreen extends StatefulWidget {
     required this.videoData,
     this.pgnContent,
     this.moves,
+    this.timestamps,
     this.openingName,
     required this.middleGameTimestamp,
     required this.endGameTimestamp,
@@ -96,12 +98,16 @@ class _MoveAnnotationsScreenState extends State<MoveAnnotationsScreen> {
       final moveNumber = (i ~/ 2) + 1;
       final moveColor = i % 2 == 0 ? 'white' : 'black';
       
-      // Calculate default timestamp based on move number and total duration
       double timestamp = 0;
-      if (_controller.value.isInitialized) {
-        final totalDuration = _controller.value.duration.inSeconds.toDouble();
-        final movePosition = i / widget.moves!.length;
-        timestamp = movePosition * totalDuration;
+      if (widget.timestamps != null && widget.timestamps!.length > i) {
+        timestamp = widget.timestamps![i].toDouble();
+      } else {
+        // Calculate default timestamp based on move number and total duration
+        if (_controller.value.isInitialized) {
+          final totalDuration = _controller.value.duration.inMilliseconds.toDouble();
+          final movePosition = i / widget.moves!.length;
+          timestamp = movePosition * totalDuration;
+        }
       }
 
       _annotations.add(
@@ -131,7 +137,7 @@ class _MoveAnnotationsScreenState extends State<MoveAnnotationsScreen> {
       _selectedMove = move;
       _annotationController.text = move.annotation ?? '';
     });
-    _controller.seekTo(Duration(seconds: move.timestamp));
+    _controller.seekTo(Duration(milliseconds: move.timestamp));
   }
 
   void _updateMoveClassification(MoveClassification? classification) {
@@ -638,7 +644,7 @@ class _MoveAnnotationsScreenState extends State<MoveAnnotationsScreen> {
                                       Text(
                                         _selectedMove!.timestamp > 0
                                             ? Duration(
-                                                seconds: _selectedMove!.timestamp,
+                                                milliseconds: _selectedMove!.timestamp,
                                               ).toString().split('.').first
                                             : 'N/A',
                                         style: TextStyle(
@@ -654,7 +660,7 @@ class _MoveAnnotationsScreenState extends State<MoveAnnotationsScreen> {
                                     child: ElevatedButton(
                                       onPressed: () {
                                         _updateMoveTimestamp(
-                                          _controller.value.position.inSeconds,
+                                          _controller.value.position.inMilliseconds,
                                         );
                                       },
                                       style: ElevatedButton.styleFrom(

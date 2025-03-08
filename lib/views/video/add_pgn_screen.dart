@@ -8,11 +8,13 @@ import '../../models/video_types.dart';
 class AddPGNScreen extends StatefulWidget {
   final VideoData videoData;
   final String? initialPgnContent;
+  final List<int>? timestamps;
 
   const AddPGNScreen({
     super.key,
     required this.videoData,
     this.initialPgnContent,
+    this.timestamps,
   });
 
   @override
@@ -24,6 +26,7 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
   String? _pgnContent;
   String? _openingName;
   List<String> _moves = [];
+  List<int> _timestamps = [];
   bool _isLoading = false;
   String? _error;
   final TextEditingController _pgnContentController = TextEditingController();
@@ -32,8 +35,28 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
   void initState() {
     super.initState();
     if (widget.initialPgnContent != null) {
+      // Set the text and process the PGN content
       _pgnContentController.text = widget.initialPgnContent!;
-      _processPGNContent(widget.initialPgnContent!);
+      _processPGNContent(widget.initialPgnContent!, widget.timestamps);
+      
+      // Set state to indicate we have auto-filled content
+      setState(() {
+        _pgnContent = widget.initialPgnContent;
+        _isLoading = false;
+      });
+      
+      // Show a snackbar to indicate auto-fill if content was generated
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('PGN content was automatically generated from your video'),
+              duration: Duration(seconds: 3),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      });
     }
   }
 
@@ -59,7 +82,7 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
         final file = File(result.files.single.path!);
         final content = await file.readAsString();
         _pgnContentController.text = content;
-        await _processPGNContent(content);
+        await _processPGNContent(content, null);
         setState(() {
           _pgnFile = file;
         });
@@ -76,7 +99,7 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
     }
   }
 
-  Future<void> _processPGNContent(String content) async {
+  Future<void> _processPGNContent(String content, List<int>? timestamps) async {
     try {
       // Parse PGN content
       final game = chess.Chess();
@@ -113,6 +136,7 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
         _pgnContent = content;
         _openingName = opening;
         _moves = moves;
+        _timestamps = timestamps ?? [];
         _isLoading = false;
       });
     } catch (e, stackTrace) {
@@ -130,6 +154,7 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
           videoData: widget.videoData,
           pgnContent: _pgnContent,
           moves: _moves,
+          timestamps: _timestamps,
           openingName: _openingName,
         ),
       ),
@@ -238,7 +263,7 @@ class _AddPGNScreenState extends State<AddPGNScreen> {
                   maxLines: 8,
                   onChanged: (value) {
                     if (value.isNotEmpty) {
-                      _processPGNContent(value);
+                      _processPGNContent(value, null);
                     }
                   },
                 ),

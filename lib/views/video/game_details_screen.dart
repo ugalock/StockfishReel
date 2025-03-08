@@ -7,6 +7,7 @@ class GameDetailsScreen extends StatefulWidget {
   final VideoData videoData;
   final String? pgnContent;
   final List<String>? moves;
+  final List<int>? timestamps;
   final String? openingName;
 
   const GameDetailsScreen({
@@ -14,6 +15,7 @@ class GameDetailsScreen extends StatefulWidget {
     required this.videoData,
     this.pgnContent,
     this.moves,
+    this.timestamps,
     this.openingName,
   });
 
@@ -108,6 +110,7 @@ class _GameDetailsScreenState extends State<GameDetailsScreen> {
           videoData: widget.videoData,
           pgnContent: widget.pgnContent,
           moves: widget.moves,
+          timestamps: widget.timestamps,
           openingName: widget.openingName,
           middleGameTimestamp: _middleGameTimestamp,
           endGameTimestamp: _endGameTimestamp,

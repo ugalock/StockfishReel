@@ -121,10 +121,9 @@ export const convertGifToMp4 = functions.object().onFinalize(async (object) => {
                 .videoFilters("pad=iw:ceil(iw*16/9):0:(oh-ih)/2:color=black,setsar=1,scale='if(gt(iw,720),720,iw)':'if(gt(ih,1280),1280,ih)'")
                 .videoCodec('libx265')
                 .outputOptions([
-                    '-crf 30',
+                    '-crf 10',
                     '-b:v 0',
-                    '-vtag hvc1',
-                    // '-cpu-used 4'
+                    '-vtag hvc1'
                 ])
                 .output(outputTempFile.path)
                 .on('end', () => {
@@ -173,6 +172,7 @@ export const convertGifToMp4 = functions.object().onFinalize(async (object) => {
 export const transcodeVideo = functions.object().onFinalize(async (object) => {
     const filePath = object.name;
     const contentType = object.contentType;
+    const generatePgn = object.metadata?.generatePgn ?? false;
 
     if (!filePath || !filePath.startsWith('tmp/')) {
         // console.log('File is not in the tmp directory, skipping conversion.');
@@ -192,15 +192,32 @@ export const transcodeVideo = functions.object().onFinalize(async (object) => {
         return;
     }
 
-    const videoRef = admin.firestore().collection('videos').where('id', '==', uuid).limit(1);
-    const querySnapshot = await videoRef.get();
-    if (querySnapshot.empty) {
-        console.log('Video not found, skipping conversion.');
-        return;
+    let userId: string | null = null;
+    let videoRef, querySnapshot, videoDoc;
+    let pgnStatusRef, pgnStatusQuerySnapshot, pgnStatusDoc;
+    if (!generatePgn) {
+        videoRef = admin.firestore().collection('videos').where('id', '==', uuid).limit(1);
+        querySnapshot = await videoRef.get();
+        if (querySnapshot.empty) {
+            console.log('Video not found, skipping conversion.');
+            return;
+        }
+    
+        videoDoc = querySnapshot.docs[0];
+        userId = videoDoc.data().uploaderId;
+    } else {
+        pgnStatusRef = admin.firestore().collection('pgn_statuses').where('uuid', '==', uuid).limit(1);
+        pgnStatusQuerySnapshot = await pgnStatusRef.get();
+        if (pgnStatusQuerySnapshot.empty) {
+            console.log('PGN status not found, skipping conversion.');
+            return;
+        }
+        pgnStatusDoc = pgnStatusQuerySnapshot.docs[0];
+        await pgnStatusDoc!.ref.update({
+            status: 'processing',
+        });
+        userId = object.metadata?.userId!;
     }
-
-    const videoDoc = querySnapshot.docs[0];
-    const userId = videoDoc.data().uploaderId;
 
     // Reference to the bucket where the file was uploaded.
     const bucket = storage.bucket(object.bucket);
@@ -227,10 +244,9 @@ export const transcodeVideo = functions.object().onFinalize(async (object) => {
                 .videoFilters("pad=iw:ceil(iw*16/9):0:(oh-ih)/2:color=black,setsar=1,scale='if(gt(iw,720),720,iw)':'if(gt(ih,1280),1280,ih)'")
                 .videoCodec('libx265')
                 .outputOptions([
-                    '-crf 30',
+                    '-crf 10',
                     '-b:v 0',
-                    '-vtag hvc1',
-                    // '-cpu-used 4'
+                    '-vtag hvc1'
                 ])
                 .output(outputTempFile.path)
                 .on('end', () => {
@@ -260,14 +276,45 @@ export const transcodeVideo = functions.object().onFinalize(async (object) => {
         });
         console.log('MP4 uploaded successfully.');
 
-        // Update the video document with the new video URL.
-        await videoDoc.ref.update({
-            videoUrl: destination,
-            thumbnailUrl: destination,
-            status: 'completed',
-        });
+        if (!generatePgn) {
+            // Update the video document with the new video URL.
+            await videoDoc!.ref.update({
+                videoUrl: destination,
+                thumbnailUrl: destination,
+                status: 'completed',
+            });
+        } else {
+            // Send HTTP request to Cloud Run Service to generate PGN
+            const publicUrl = `https://storage.googleapis.com/${object.bucket}/videos/${uuid}.mp4`
+            const response = await fetch('https://video2pgn-596188845031.us-central1.run.app/process_video', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: publicUrl }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`Request failed with status ${response.status}: ${response.statusText}`);
+            }
+            const data = await response.json();
+            await pgnStatusDoc!.ref.update({
+                pgnContent: data.pgn,
+                timestamps: data.timestamps,
+                status: 'completed',
+            });
+        }
     } catch (error) {
         console.error('Error in conversion process:', error);
+        if (!generatePgn) {
+            await videoDoc!.ref.update({
+                status: 'error',
+                error: `Error transcoding video: ${error}`,
+            });
+        } else {
+            await pgnStatusDoc!.ref.update({
+                status: 'error',
+                error: `Error generating PGN: ${error}`,
+            });
+        }
         throw error;
     } finally {
         // Clean up temporary files.
